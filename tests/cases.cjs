@@ -1,0 +1,70 @@
+// Synthetic fixtures only. IDs match SPEC.md; variants exercise every listed alternative.
+const cases = [];
+const add = (id, kind, input, expected, raw = undefined) => cases.push({ id, kind, input, expected, raw });
+const density = (psa, volume) => ({ psa, volume });
+add('PD-01', 'density', density('6', '40'), ['0.150 ng/mL/cc']);
+add('PD-02', 'density', density('4.5', '30'), ['0.150 ng/mL/cc']);
+add('PD-03', 'density', density('7', '33'), ['0.212 ng/mL/cc'], { value: 0.2121212121, tolerance: 1e-8 });
+add('PD-04', 'density', density('0', '40'), ['0.000 ng/mL/cc']);
+add('PD-05', 'density', density('0.01', '100'), ['<0.001 ng/mL/cc']);
+add('PD-06', 'density', density('6', '0'), { error: 'volume' });
+add('PD-07', 'density', density('-1', '40'), { error: 'psa' });
+for (const psa of ['', '<0.1']) add('PD-08', 'density', density(psa, '40'), { error: 'psa' });
+
+const measurements = (...pairs) => ({ measurements: pairs.map(([date, psa]) => ({ date, psa: String(psa) })) });
+const series = [['2025-01-01', 2], ['2025-04-11', 4], ['2025-07-20', 8]];
+add('DT-01', 'doubling', measurements(...series.slice(0, 2)), ['3.29 months'], { value: 3.2854209446, days: 100, tolerance: 1e-6 });
+add('DT-02', 'doubling', measurements(...series), ['3.29 months']);
+add('DT-03', 'doubling', measurements(...[...series].reverse()), ['3.29 months']);
+add('DT-04', 'doubling', measurements(['2025-01-01', 4], ['2025-04-11', 4]), ['PSA is effectively unchanged across these measurements; no finite doubling time.']);
+add('DT-05', 'doubling', measurements(['2025-01-01', 4], ['2025-04-11', 2]), ['PSA is declining across these measurements; doubling time is not applicable.']);
+add('DT-06', 'doubling', measurements(['2025-01-01', 2], ['2025-01-31', 8], ['2025-04-11', 4]), ['5.77 months'], { days: 175.5555556, tolerance: 1e-6 });
+add('DT-07', 'doubling', measurements(['2024-02-28', 2], ['2024-03-01', 4]), ['0.07 months'], { days: 2, tolerance: 0 });
+add('DT-08', 'doubling', measurements(['2025-01-01', 2], ['2025-01-01', 4]), { error: 'date-1' });
+add('DT-09', 'doubling', measurements(['2025-01-01', 0], ['2025-04-11', 4]), { error: 'psa-0' });
+add('DT-10', 'doubling', measurements(['2025-01-01', 2], ['', 4]), { error: 'date-1' });
+add('DT-10', 'doubling', measurements(...series.slice(0, 2), ['', '']), { error: 'date-2' });
+add('DT-11', 'doubling', measurements(['2025-01-01', 2], ['2025-02-29', 4]), { error: 'date-1' });
+add('DT-11', 'doubling', measurements(['2025-01-01', 2], ['2026-09-15', 4]), { error: 'date-1' });
+add('DT-12', 'doubling', measurements(['2025-01-01', 4], ['2025-04-11', 4.000000000004]), ['PSA is effectively unchanged across these measurements; no finite doubling time.']);
+
+const volume = (width, height, length, unit = 'cm') => ({ width, height, length, unit });
+add('PV-01', 'volume', volume('4', '3', '5'), ['31.2 mL']);
+add('PV-02', 'volume', volume('40', '30', '50', 'mm'), ['31.2 mL']);
+add('PV-03', 'volume', volume('5', '5', '5'), ['65.0 mL']);
+add('PV-04', 'volume', volume('4.2', '3.1', '5.3'), ['35.9 mL'], { value: 35.88312, tolerance: 1e-8 });
+add('PV-05', 'volume', volume('0.1', '0.1', '0.1'), ['<0.1 mL'], { value: 0.00052, tolerance: 1e-8 });
+add('PV-06', 'volume', volume('4', '0', '5'), { error: 'height' });
+for (const height of ['-3', '']) add('PV-07', 'volume', volume('4', height, '5'), { error: 'height' });
+
+const ipss = (scores, qol = '') => ({ ...Object.fromEntries(scores.map((value, index) => [`q${index + 1}`, String(value)])), qol: String(qol) });
+const moderate = [3, 3, 3, 3, 3, 2, 2];
+const severe = [3, 3, 3, 3, 3, 3, 2];
+add('IP-01', 'ipss', ipss(Array(7).fill(0), 0), ['0 / 35', 'Mild', '0 / 6']);
+add('IP-02', 'ipss', ipss(Array(7).fill(1)), ['7 / 35', 'Mild', 'Not answered']);
+add('IP-03', 'ipss', ipss([2, 1, 1, 1, 1, 1, 1], 1), ['8 / 35', 'Moderate', '1 / 6']);
+add('IP-04', 'ipss', ipss(moderate, 2), ['19 / 35', 'Moderate', '2 / 6']);
+add('IP-05', 'ipss', ipss(severe, 3), ['20 / 35', 'Severe', '3 / 6']);
+add('IP-06', 'ipss', ipss(Array(7).fill(5), 6), ['35 / 35', 'Severe', '6 / 6']);
+add('IP-07', 'ipss', ipss([0, 0, 0, 0, 0, 0, ''], 4), { error: 'q7' });
+for (const value of [-1, 6, 2.5]) add('IP-08', 'ipss', ipss([value, 0, 0, 0, 0, 0, 0], 5), { error: 'q1' });
+for (let qol = 0; qol <= 6; qol++) add('IP-09', 'ipss', ipss(severe, qol), ['20 / 35', 'Severe', `${qol} / 6`]);
+add('IP-10', 'ipss', ipss(Array(7).fill(0)), ['0 / 35', 'Mild', 'Not answered']);
+for (const value of [-1, 7, 2.5, 'abc', 'NaN', 'Infinity']) add('IP-11', 'ipss', ipss(Array(7).fill(1), value), { error: 'qol' });
+
+const egfr = (age, sex, creatinine, unit = 'mg/dL') => ({ age: String(age), sex, creatinine: String(creatinine), unit });
+add('EG-01', 'egfr', egfr(60, 'male', 1), ['86.2 mL/min/1.73 m²'], { value: 86.1626207797, tolerance: 1e-6 });
+add('EG-02', 'egfr', egfr(60, 'female', 1), ['64.5 mL/min/1.73 m²'], { value: 64.4950003539, tolerance: 1e-6 });
+add('EG-03', 'egfr', egfr(60, 'male', 88.4, 'µmol/L'), ['86.2 mL/min/1.73 m²']);
+add('EG-04', 'egfr', egfr(60, 'male', 0.9), ['97.8 mL/min/1.73 m²']);
+add('EG-05', 'egfr', egfr(60, 'female', 0.7), ['98.9 mL/min/1.73 m²']);
+add('EG-06', 'egfr', egfr(40, 'male', 0.6), ['125.1 mL/min/1.73 m²']);
+add('EG-07', 'egfr', egfr(40, 'female', 0.5), ['121.5 mL/min/1.73 m²']);
+add('EG-08', 'egfr', egfr(18, 'male', 1), ['111.9 mL/min/1.73 m²']);
+add('EG-09', 'egfr', egfr(17, 'male', 1), { error: 'age' });
+for (const value of [0, -1]) add('EG-10', 'egfr', egfr(60, 'male', value), { error: 'creatinine' });
+add('EG-11', 'egfr', egfr(60.5, 'male', 1), { error: 'age' });
+add('EG-12', 'egfr', egfr(60, '', 1), { error: 'sex' });
+for (const value of ['', '<0.2']) add('EG-13', 'egfr', egfr(60, 'female', value), { error: 'creatinine' });
+
+module.exports = { cases, today: '2026-09-14', uiCaseIds: ['PV-08', 'IP-12', 'IP-13', 'IP-14'] };

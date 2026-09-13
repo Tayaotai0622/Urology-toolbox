@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
+  <title>Urology Toolbox</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <script src="calculators.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="brand-line"><span class="brand-mark" aria-hidden="true">UT</span><h1>Urology Toolbox</h1><span class="version">0.1</span></div>
+      <p class="privacy"><span aria-hidden="true" class="privacy-dot"></span>Calculations run in this browser. Entries are not saved.</p>
+    </header>
+    <nav aria-label="Calculators" aria-describedby="switch-notice">
+      <div class="navigation">
+        <button type="button" data-calculator="density" aria-pressed="true" aria-controls="calculator">PSA Density</button>
+        <button type="button" data-calculator="doubling" aria-pressed="false" aria-controls="calculator">PSA Doubling Time</button>
+        <button type="button" data-calculator="volume" aria-pressed="false" aria-controls="calculator">Prostate Volume</button>
+        <button type="button" data-calculator="ipss" aria-pressed="false" aria-controls="calculator">IPSS</button>
+        <button type="button" data-calculator="egfr" aria-pressed="false" aria-controls="calculator">eGFR</button>
+      </div>
+      <p id="switch-notice" class="navigation-note">Switching calculators clears entries.</p>
+    </nav>
+    <main id="calculator" aria-labelledby="calculator-title"></main>
+    <noscript><p class="no-script">Enable JavaScript to use these local calculators.</p></noscript>
+    <footer>Calculated estimates require clinical interpretation.</footer>
+  </div>
+</body>
+</html>
