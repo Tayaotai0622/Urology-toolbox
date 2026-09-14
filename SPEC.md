@@ -1,10 +1,10 @@
 # Urology Toolbox — Specification v0.1
 
-Status: proposed specification; application not implemented.
+Status: Urology Toolbox v0.1 implementation complete. See [VERIFICATION.md](VERIFICATION.md) for executed checks and remaining verification gaps.
 
 Project directory: `D:\AI-Projects\Urology-toolbox`
 
-This phase creates **SPEC.md only**. It does not authorize application development, dependency installation, or deployment.
+The specification-only phase is complete. This document remains the v0.1 requirements baseline for the implemented application; verification status is recorded in [VERIFICATION.md](VERIFICATION.md). Deployment is not part of the current phase.
 
 ## 1. Purpose and scope
 
@@ -540,9 +540,9 @@ All demographics and laboratory values below are synthetic. Expected numerical o
 - Output always includes body-surface-area indexing and the equation version.
 - Under-18 and invalid inputs block calculation. No CKD diagnosis or medication recommendation is generated.
 
-## 9. Overall acceptance criteria for the future implementation
+## 9. Overall acceptance criteria
 
-These are future implementation checks. No application or automated test files are created in this specification phase, and these checks are not claimed to have passed against an application.
+These remain the acceptance criteria for v0.1. Implementation and automated verification have been performed; see [VERIFICATION.md](VERIFICATION.md) for actual results and environments. Cross-browser acceptance testing is not yet fully complete.
 
 1. Exactly the five requested calculators are available; each meets its section's inputs, formula, output, validation, edge cases, and acceptance criteria.
 2. All listed synthetic fixtures yield the specified rounded display or semantic error/status. Where raw references are supplied, use an absolute tolerance of 10⁻⁸ for PSA density/volume and 10⁻⁶ for doubling-time days or eGFR. Display strings must still match exactly; approximate reference values are not rounded inputs.
@@ -565,6 +565,6 @@ These are future implementation checks. No application or automated test files a
 - Translated questionnaires, a full seven-symptom patient questionnaire, and longitudinal symptom comparison. The standard optional IPSS QoL question and its separate score are included in v0.1.
 - Pediatric eGFR, cystatin C equations, MDRD, CKD-EPI 2009, Cockcroft–Gault, CKD staging, drug dosing, and body-surface-area de-indexing.
 - Native mobile applications, PWA installation, service-worker caching, themes, language switching, and other personalization.
-- Framework selection, implementation scaffolding, HTML, CSS, JavaScript, application code, package files, deployment configuration, or test code during this phase.
+- During the completed specification-only phase, framework selection, implementation scaffolding, HTML, CSS, JavaScript, application code, package files, deployment configuration, and test code were excluded. This historical phase restriction does not describe the current implemented state.
 
-Completion of the current task means this specification exists for review. Application development remains a separate next step.
+Urology Toolbox v0.1 is implemented. Refer to [VERIFICATION.md](VERIFICATION.md) for verification status, including cross-browser acceptance work that remains incomplete.

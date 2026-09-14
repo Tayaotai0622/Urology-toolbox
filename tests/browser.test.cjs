@@ -18,28 +18,35 @@ const server = http.createServer((request, response) => {
   response.end(fs.readFileSync(path.join(root, asset[0])));
 });
 
-async function enter(page, id, value) {
+async function enter(page, id, value, { allowInvalidInjection = false } = {}) {
   const control = page.locator(`[id="${id}"]`);
   const type = await control.evaluate(element => element.tagName === 'SELECT' ? 'select' : element.type);
   if (type === 'select') {
     const exists = await control.locator('option').evaluateAll((options, value) => options.some(option => option.value === value), String(value));
-    // Intentional invalid-DOM injection tests the defensive calculation boundary.
-    if (!exists) await control.evaluate((element, value) => element.add(new Option(value, value)), String(value));
+    if (!exists) {
+      assert.ok(allowInvalidInjection, `Missing application option for ${id}: ${value}`);
+      // Only deliberately invalid fixture fields may bypass the normal options.
+      await control.evaluate((element, value) => element.add(new Option(value, value)), String(value));
+    }
     await control.selectOption(String(value));
   } else {
-    if (type === 'date' && value === '2025-02-29') await control.evaluate(element => { element.type = 'text'; });
+    if (type === 'date' && value === '2025-02-29') {
+      assert.ok(allowInvalidInjection, 'Impossible dates may be injected only for invalid-input fixtures.');
+      await control.evaluate(element => { element.type = 'text'; });
+    }
     await control.fill(String(value));
   }
 }
 async function prepare(page, fixture) {
+  const fixtureEnter = (id, value) => enter(page, id, value, { allowInvalidInjection: fixture.expected.error === id });
   await page.locator(`[data-calculator="${fixture.kind}"]`).click();
   await page.locator('#clear').click();
-  if (fixture.input.unit) await enter(page, 'unit', fixture.input.unit);
+  if (fixture.input.unit) await fixtureEnter('unit', fixture.input.unit);
   if (fixture.kind === 'doubling') {
     while (await page.locator('.measurement').count() < fixture.input.measurements.length) await page.locator('#add-measurement').click();
-    for (const [index, row] of fixture.input.measurements.entries()) { await enter(page, `date-${index}`, row.date); await enter(page, `psa-${index}`, row.psa); }
+    for (const [index, row] of fixture.input.measurements.entries()) { await fixtureEnter(`date-${index}`, row.date); await fixtureEnter(`psa-${index}`, row.psa); }
   } else {
-    for (const [id, value] of Object.entries(fixture.input)) if (id !== 'unit') await enter(page, id, value);
+    for (const [id, value] of Object.entries(fixture.input)) if (id !== 'unit') await fixtureEnter(id, value);
   }
 }
 async function resultValues(page) { return page.locator('#result .result-value').allTextContents(); }
@@ -90,7 +97,7 @@ async function run(channel, base) {
     const original = Storage.prototype.setItem;
     Storage.prototype.setItem = function (...args) { window.__storageWrites++; return original.apply(this, args); };
   });
-  const report = { channel, version: browser.version(), fixtureVariants: 0, interactionCases: [], layouts: [], errors: [] };
+  const report = { channel, version: browser.version(), fixtureVariants: 0, interactionCases: [], reviewChecks: [], layouts: [], errors: [] };
   try {
     await page.goto(base);
     await emptyForm(page);
@@ -183,6 +190,56 @@ async function run(channel, base) {
     // click when a blur message would otherwise move the button.
     await prepare(page, cases.find(item => item.id === 'PD-06')); await calculate(page);
     await enter(page, 'volume', '40'); await page.locator('#clear').click(); await emptyForm(page);
+
+    // M1: unit blur must not reveal an unrelated required field cleared by the
+    // unit change. Calculate must still validate the complete form.
+    await prepare(page, cases.find(item => item.id === 'EG-09')); await calculate(page);
+    await page.locator('#unit').focus(); await enter(page, 'unit', 'µmol/L');
+    await page.locator('#unit').press('Tab');
+    assert.equal(await page.locator('#error-creatinine').isHidden(), true);
+    assert.equal(await page.locator('#error-age').isVisible(), true);
+    await calculate(page); assert.equal(await page.locator('#error-creatinine').isVisible(), true);
+    report.reviewChecks.push('M1: only the blurred scalar control is revalidated');
+
+    // M1: new untouched rows stay error-free on blur; old and new duplicate
+    // partners update together without revealing that new row's missing PSA.
+    await prepare(page, cases.find(item => item.id === 'DT-08')); await calculate(page);
+    await page.locator('#add-measurement').click();
+    // A date input can use Tab for its internal date segments, so explicitly
+    // focus a button without clicking it to exercise a real focusout event
+    // while leaving every unrelated input untouched.
+    await enter(page, 'date-2', '2025-06-01'); await page.locator('#add-measurement').focus();
+    assert.equal(await page.locator('#error-psa-2').isHidden(), true);
+    assert.equal(await page.locator('#error-date-0').isVisible(), true);
+    assert.equal(await page.locator('#error-date-1').isVisible(), true);
+    await enter(page, 'date-0', '2025-02-01'); await page.locator('#add-measurement').focus();
+    assert.equal(await page.locator('#error-date-0').isHidden(), true);
+    assert.equal(await page.locator('#error-date-1').isHidden(), true);
+    await enter(page, 'date-0', '2025-01-01'); await page.locator('#add-measurement').focus();
+    assert.equal(await page.locator('#error-date-0').isVisible(), true);
+    assert.equal(await page.locator('#error-date-1').isVisible(), true);
+    assert.equal(await page.locator('#error-psa-2').isHidden(), true);
+    await calculate(page); assert.equal(await page.locator('#error-psa-2').isVisible(), true);
+    report.reviewChecks.push('M1: untouched rows and related duplicate-date errors');
+
+    // M2: the legal µmol/L option exists, works, and cannot be manufactured by
+    // the success-path helper if an application regression removes it.
+    const micromolar = cases.find(item => item.id === 'EG-03');
+    await prepare(page, micromolar);
+    assert.equal(await page.locator('#unit option[value="µmol/L"]').count(), 1);
+    await calculate(page); assert.deepEqual(await resultValues(page), micromolar.expected);
+    await page.locator('#unit option[value="µmol/L"]').evaluate(element => element.remove());
+    await assert.rejects(() => enter(page, 'unit', 'µmol/L'), /Missing application option for unit/);
+    assert.equal(await page.locator('#unit option[value="µmol/L"]').count(), 0);
+    report.reviewChecks.push('M2: success fixtures require existing application options');
+
+    await prepare(page, cases.find(item => item.id === 'IP-05'));
+    await assert.rejects(() => enter(page, 'qol', '7'), /Missing application option for qol/);
+    assert.equal(await page.locator('#qol option[value="7"]').count(), 0);
+    await prepare(page, cases.find(item => item.id === 'IP-11' && item.input.qol === '7'));
+    assert.equal(await page.locator('#qol option[value="7"]').count(), 1);
+    await calculate(page); assert.equal(await page.locator('#error-qol').isVisible(), true);
+    report.reviewChecks.push('M2: injection is explicit and limited to the invalid fixture field');
 
     // Refresh, BFCache-style pageshow, and an actual away/back navigation.
     await prepare(page, cases.find(item => item.id === 'PD-01')); await calculate(page);

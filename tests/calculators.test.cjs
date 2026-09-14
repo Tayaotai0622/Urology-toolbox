@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { calculate, decimal, calendarDay, format } = require('../calculators.js');
+const { calculate, validateFields, decimal, calendarDay, format } = require('../calculators.js');
 const { cases, today, uiCaseIds } = require('./cases.cjs');
 
 for (const [index, fixture] of cases.entries()) test(`${fixture.id} variant ${index + 1}`, () => {
@@ -81,4 +81,43 @@ test('Unknown units, incomplete series, negative slopes and input isolation', ()
   assert.equal(calculate('doubling', { measurements: [] }, today).ok, false);
   const input = structuredClone(cases.find(item => item.id === 'DT-03').input);
   const before = JSON.stringify(input); calculate('doubling', input, today); assert.equal(JSON.stringify(input), before);
+});
+
+test('M1: blur validation inspects only the requested numeric control and does not calculate', () => {
+  const input = { volume: '0', get psa() { throw new Error('Unrelated PSA must not be validated'); } };
+  assert.deepEqual(Object.keys(validateFields('density', input, ['volume'])), ['volume']);
+  assert.deepEqual(validateFields('density', { ...{ psa: 'invalid', volume: '40' } }, ['volume']), {});
+  const overflow = { psa: '1' + '0'.repeat(308), volume: '0.' + '0'.repeat(307) + '1' };
+  assert.deepEqual(validateFields('density', overflow, ['psa']), {});
+  assert.equal(calculate('density', overflow).ok, false);
+});
+test('M1: scoped selects and symptom scores do not produce unrelated required errors', () => {
+  assert.deepEqual(validateFields('egfr', { unit: 'µmol/L' }, ['unit']), {});
+  assert.deepEqual(Object.keys(validateFields('egfr', { unit: 'invalid' }, ['unit'])), ['unit']);
+  assert.deepEqual(validateFields('ipss', { q1: '1' }, ['q1']), {});
+  assert.deepEqual(Object.keys(validateFields('ipss', { q1: '1' }, ['q7'])), ['q7']);
+  assert.equal(calculate('ipss', { q1: '1' }).ok, false);
+});
+test('M1: duplicate-date validation can update related dates without validating untouched rows', () => {
+  const input = { measurements: [{ date: '2025-01-01', psa: '2' }, { date: '2025-01-01', psa: '4' }, { date: '', psa: '' }] };
+  assert.deepEqual(Object.keys(validateFields('doubling', input, ['date-0', 'date-1'], today)).sort(), ['date-0', 'date-1']);
+  assert.deepEqual(Object.keys(validateFields('doubling', input, ['date-0'], today)), ['date-0']);
+  input.measurements[0].date = '2025-02-01';
+  assert.deepEqual(validateFields('doubling', input, ['date-0', 'date-1'], today), {});
+  assert.deepEqual(validateFields('doubling', input, ['psa-0'], today), {});
+  assert.ok(calculate('doubling', input, today).errors['psa-2']);
+});
+test('L1: actual programming TypeErrors propagate instead of becoming numerical errors', () => {
+  assert.throws(() => calculate('doubling', { measurements: [null, {}] }, today), TypeError);
+  assert.throws(() => validateFields('doubling', { measurements: [null, {}] }, ['date-0'], today), TypeError);
+});
+test('L1: unexpected error types, including unrelated RangeErrors, are rethrown unchanged', () => {
+  for (const error of [new TypeError('Programming defect'), new Error('Programming defect'), new ReferenceError('Programming defect'), new RangeError('Unexpected range defect')]) {
+    const input = { get psa() { throw error; }, volume: '40' };
+    assert.throws(() => calculate('density', input), caught => caught === error);
+  }
+});
+test('L1: expected numerical failures retain the existing validation message', () => {
+  const result = calculate('density', { psa: '1' + '0'.repeat(308), volume: '0.1' });
+  assert.deepEqual(result, { ok: false, errors: { _form: 'Unable to calculate a finite result. Check the values and units.' } });
 });

@@ -60,12 +60,16 @@
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false }).format(value);
   }
 
-  function calculate(kind, input = {}, today = localToday()) {
+  // A field scope reuses the same validation rules without running formulas.
+  // Normal Calculate calls have no scope and still validate every input.
+  function evaluate(kind, input = {}, today = localToday(), fields = null) {
     const errors = {};
     const lines = [];
     const notes = [];
     const raw = {};
+    const wants = key => fields === null || fields.has(key);
     function number(key, label, { zero = false, integer = false, min = null } = {}) {
+      if (!wants(key)) return;
       const parsed = decimal(input[key]);
       if (parsed.error) {
         errors[key] = parsed.error === 'required' ? `Enter ${label}.` : `Enter a finite decimal number for ${label}, without units or comparison signs.`;
@@ -79,10 +83,11 @@
       return parsed.value;
     }
     function option(key, choices, message) {
-      if (!choices.includes(input[key])) errors[key] = message;
+      if (wants(key) && !choices.includes(input[key])) errors[key] = message;
       return input[key];
     }
     function score(key, maximum, message, optional = false) {
+      if (!wants(key)) return;
       if (optional && String(input[key] ?? '').trim() === '') return null;
       const parsed = decimal(input[key]);
       if (parsed.error || !whole(input[key], parsed.value) || parsed.value < 0 || parsed.value > maximum) errors[key] = message;
@@ -90,12 +95,13 @@
     }
     function result(label, value) { lines.push({ label, value }); }
     const valid = () => Object.keys(errors).length === 0;
+    const shouldCalculate = () => fields === null && valid();
 
     try {
       if (kind === 'density') {
         const psa = number('psa', 'total PSA (ng/mL)', { zero: true });
         const volume = number('volume', 'a prostate volume (mL)');
-        if (valid()) {
+        if (shouldCalculate()) {
           raw.value = finite(psa / volume);
           if (psa > 0) positive(raw.value);
           result('PSA Density', format(raw.value, 3) + ' ng/mL/cc');
@@ -103,37 +109,40 @@
       } else if (kind === 'volume') {
         const unit = option('unit', ['cm', 'mm'], 'Select cm or mm for all dimensions.');
         const dimensions = ['width', 'height', 'length'].map(key => number(key, `${key} (${unit})`));
-        if (valid()) {
+        if (shouldCalculate()) {
           const [width, height, length] = dimensions.map(value => positive(unit === 'mm' ? value / 10 : value));
           raw.value = positive(positive(positive(0.52 * width) * height) * length);
           result('Estimated Prostate Volume', format(raw.value, 1) + ' mL');
         }
       } else if (kind === 'doubling') {
         const rows = Array.isArray(input.measurements) ? input.measurements : [];
-        if (rows.length < 2) errors.measurements = 'Enter at least two complete PSA measurements.';
+        if (wants('measurements') && rows.length < 2) errors.measurements = 'Enter at least two complete PSA measurements.';
         const todayDay = calendarDay(today);
         if (todayDay === null) throw new RangeError(NUMERICAL_ERROR);
         const seenDates = new Map();
+        const checkDates = fields === null || [...fields].some(key => key.startsWith('date-'));
         const values = rows.map((row, index) => {
           const key = row.key ?? index;
           const dateKey = `date-${key}`;
           const psaKey = `psa-${key}`;
-          const day = calendarDay(row.date);
-          if (!row.date) errors[dateKey] = 'Enter a measurement date (YYYY-MM-DD).';
-          else if (day === null) errors[dateKey] = 'Enter a valid calendar date (YYYY-MM-DD).';
-          else if (day > todayDay) errors[dateKey] = 'Measurement dates cannot be in the future.';
+          const day = checkDates ? calendarDay(row.date) : null;
+          if (wants(dateKey)) {
+            if (!row.date) errors[dateKey] = 'Enter a measurement date (YYYY-MM-DD).';
+            else if (day === null) errors[dateKey] = 'Enter a valid calendar date (YYYY-MM-DD).';
+            else if (day > todayDay) errors[dateKey] = 'Measurement dates cannot be in the future.';
+          }
           if (day !== null) {
             if (seenDates.has(day)) {
-              errors[dateKey] = 'Each PSA measurement must have a different date.';
-              errors[seenDates.get(day)] = errors[dateKey];
+              if (wants(dateKey)) errors[dateKey] = 'Each PSA measurement must have a different date.';
+              if (wants(seenDates.get(day))) errors[seenDates.get(day)] = 'Each PSA measurement must have a different date.';
             }
             seenDates.set(day, dateKey);
           }
-          const parsed = decimal(row.psa);
-          if (parsed.error || parsed.value <= 0) errors[psaKey] = 'Enter a finite PSA greater than 0 ng/mL, without units or comparison signs.';
+          const parsed = wants(psaKey) ? decimal(row.psa) : {};
+          if (wants(psaKey) && (parsed.error || parsed.value <= 0)) errors[psaKey] = 'Enter a finite PSA greater than 0 ng/mL, without units or comparison signs.';
           return { day, psa: parsed.value };
         });
-        if (valid()) {
+        if (shouldCalculate()) {
           values.sort((a, b) => a.day - b.day);
           const times = values.map(row => row.day - values[0].day);
           const logs = values.map(row => finite(Math.log(row.psa)));
@@ -159,7 +168,7 @@
       } else if (kind === 'ipss') {
         const scores = symptoms.map((label, index) => score(`q${index + 1}`, 5, `Select a score from 0 to 5 for ${label.toLowerCase()}.`));
         const qol = score('qol', 6, 'Select a QoL score from 0 to 6, or leave it unanswered.', true);
-        if (valid()) {
+        if (shouldCalculate()) {
           raw.value = scores.reduce((sum, value) => sum + value, 0);
           raw.qol = qol;
           result('IPSS symptom score', `${raw.value} / 35`);
@@ -172,7 +181,7 @@
         const sex = option('sex', ['female', 'male'], 'Select Female or Male for the equation.');
         const unit = option('unit', ['mg/dL', 'µmol/L'], 'Select mg/dL or µmol/L.');
         const creatinine = number('creatinine', `serum creatinine (${unit})`);
-        if (valid()) {
+        if (shouldCalculate()) {
           const scr = positive(unit === 'µmol/L' ? creatinine / 88.4 : creatinine);
           const kappa = sex === 'female' ? 0.7 : 0.9;
           const alpha = sex === 'female' ? -0.241 : -0.302;
@@ -185,10 +194,16 @@
           notes.push('CKD-EPI 2021, creatinine');
         }
       } else errors._form = NUMERICAL_ERROR;
-    } catch {
+    } catch (error) {
+      if (!(error instanceof RangeError) || error.message !== NUMERICAL_ERROR) throw error;
       errors._form = NUMERICAL_ERROR;
     }
+    if (fields !== null) return { errors };
     return valid() ? { ok: true, lines, notes, raw } : { ok: false, errors };
   }
-  return Object.freeze({ calculate, decimal, calendarDay, localToday, format, symptoms: Object.freeze(symptoms), MONTH_DAYS, SLOPE_EPSILON });
+  function calculate(kind, input, today) { return evaluate(kind, input, today); }
+  function validateFields(kind, input, fieldIds, today) {
+    return evaluate(kind, input, today, new Set(fieldIds)).errors;
+  }
+  return Object.freeze({ calculate, validateFields, decimal, calendarDay, localToday, format, symptoms: Object.freeze(symptoms), MONTH_DAYS, SLOPE_EPSILON });
 });

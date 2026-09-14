@@ -1,18 +1,26 @@
 # Urology Toolbox v0.1 — verification record
 
-Executed: 2026-09-14, Windows. All fixtures are synthetic. `SPEC.md` was preserved without changes during implementation.
+Executed: 2026-09-14, Windows. All fixtures are synthetic. `SPEC.md` was preserved without changes during initial implementation; this review-fix pass updates only its status/phase descriptions. Calculator requirements, formulas, and acceptance criteria are unchanged.
 
 ## Automated results
 
 | Check | Result |
 | --- | --- |
 | JavaScript syntax | PASS |
-| Node.js v22.16.0 calculation suite | 78 tests passed, 0 failed, 0 skipped |
-| Chrome 153.0.8010.36 | 70 fixture variants plus interaction checks passed |
-| Edge 153.0.4234.32 | 70 fixture variants plus interaction checks passed |
+| Node.js v22.16.0 calculation suite | 84 tests passed, 0 failed, 0 skipped |
+| Chrome 153.0.8010.36 | 70 fixture variants, interaction checks, and four review regression checks passed |
+| Edge 153.0.4234.32 | 70 fixture variants, interaction checks, and four review regression checks passed |
 | Specification coverage | All 55 named synthetic cases covered; 140 browser fixture executions plus UI-only cases |
 
-The 78 Node checks comprise 70 fixture variants and eight coverage/edge-case checks. Successful command exit codes and PASS summaries were observed after the final application edits. Browser evidence is generated under `test-results/` (excluded from Git); the current report is `test-results/browser-report.json`.
+The 84 Node checks comprise 70 unchanged clinical fixture variants, eight existing coverage/edge-case checks, and six review regression checks. Successful command exit codes and PASS summaries were observed after the final application edits. Browser evidence is generated under `test-results/` (excluded from Git); the current report is `test-results/browser-report.json`.
+
+### Review regression coverage
+
+- M1: Field-scoped validation validates and reports only requested controls and does not run calculations. Browser checks confirm that blur after a failed calculation does not reveal errors on untouched scalar fields or newly added measurement rows. Correcting or introducing duplicate dates updates related date controls, including former peers. Calculate still validates the whole form.
+- M2: Successful fixtures require options already present in the application UI. Both browsers verify that the actual µmol/L option works, then deliberately remove it and confirm the helper fails without recreating it. Injection is permitted only for the specific field named by a deliberate invalid-input fixture; an unflagged invalid QoL option is rejected by the helper.
+- L1: Expected numerical RangeErrors retain the existing finite-result validation message. TypeError, ReferenceError, ordinary Error, and unrelated RangeError exceptions propagate unchanged. Tests also exercise a malformed measurement that causes a real TypeError.
+
+The complete automated suites were run with `node --test --test-reporter=spec tests/calculators.test.cjs` and `node tests/browser.test.cjs`; both exited successfully. Syntax checks for `app.js` and `calculators.js` also passed. Browser test tooling is external to the application, as described in README.md.
 
 ### Case coverage
 
@@ -49,7 +57,7 @@ Additional checks cover whole-string decimal parsing, overflow, underflow, integ
 - Source inspection found no application storage, logging, analytics, tracking, fetch/XHR, beacon, or history-writing calls. External URLs occur only in static, user-selected clinical reference links.
 - The content security policy blocks network connections and form submission. Values are held only in the active form and transient calculation calls. No patient identity field or real patient fixture exists.
 
-## Manual review
+## Manual review (initial implementation)
 
 - Reviewed the rendered desktop interface and mobile screenshots for all five calculators, including narrow 320-pixel layouts and IPSS's separate QoL section. Labels, units, navigation wrapping, field stacking, result wrapping, and spacing were checked visually.
 - In the Codex in-app browser, manually entered synthetic PSA 6 and volume 40 and observed `0.150 ng/mL/cc`; changed PSA to a censored value and confirmed the old result disappeared, calculation showed an inline error, and focus returned to the invalid field; switched calculators and confirmed fields/errors/results were cleared.
@@ -61,7 +69,7 @@ Additional checks cover whole-string decimal parsing, overflow, underflow, integ
 - Firefox is not installed in this environment; no Firefox run is claimed.
 - Desktop Safari and Safari on iOS require Apple environments unavailable here. Physical Android Chrome was also unavailable. Desktop Chrome/Edge viewport checks do not replace these device-specific checks.
 - Actual virtual-keyboard behavior, native mobile date/select pickers, true browser zoom, and VoiceOver/NVDA/TalkBack speech were not verified. Labels, live-region markup, focus styling, and keyboard navigation were checked, but these are not a full assistive-technology audit.
-- No claim is made that every browser/device acceptance item in SPEC section 9.5 has been completed. All listed synthetic cases and the available-environment checks above pass, with no known failing test remaining.
+- Full cross-browser acceptance testing remains incomplete; not every browser/device acceptance item in SPEC section 9.5 has been completed. All listed synthetic cases and the available-environment checks above pass, with no known failing test remaining.
 - This verification establishes the specified software behavior on the tested environments, not validation of clinical applicability beyond the formulas and limitations in SPEC.md.
 
 No deployment, remote repository, GitHub connection, backend, database, login, or external API was created.

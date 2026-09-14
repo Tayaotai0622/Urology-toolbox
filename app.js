@@ -8,6 +8,7 @@
   let nextRow = 0;
   let attempted = false;
   let actionPointer = false;
+  let datePeers = new Map();
 
   const definitions = {
     density: {
@@ -70,6 +71,7 @@
   function render(kind, focusTitle = false) {
     active = kind;
     attempted = false;
+    datePeers = new Map();
     nextRow = 0;
     const definition = definitions[kind];
     panel.innerHTML = `<div class="panel-heading"><p class="eyebrow">Clinical calculator</p><h2 id="calculator-title" tabindex="-1">${definition.title}</h2><p class="purpose">${definition.purpose}</p></div><form id="calculator-form" novalidate autocomplete="off">${formFields(kind)}<div class="actions"><button type="submit" class="primary">Calculate</button><button type="button" id="clear" class="secondary">Clear</button></div><p id="form-error" class="error" tabindex="-1" hidden></p></form><p id="edit-notice" class="edit-notice" role="status" hidden></p><div id="error-announcement" class="sr-only" role="alert" aria-atomic="true"></div><div id="result-announcement" role="status" aria-atomic="true"><section id="result" class="result" aria-label="Calculation result" hidden></section></div><section class="method" aria-label="Calculation method"><h3>Method &amp; interpretation</h3><p class="formula">${definition.formula}</p><p>${definition.note}</p><a href="${definition.reference[1]}" target="_blank" rel="noopener noreferrer">${definition.reference[0]}<span class="sr-only"> (opens in a new tab)</span></a></section>`;
@@ -115,14 +117,19 @@
     document.getElementById('form-error').hidden = true;
     document.getElementById('form-error').textContent = '';
   }
+  function showControlError(control, message) {
+    control.setAttribute('aria-invalid', String(Boolean(message)));
+    const error = document.getElementById(`error-${control.id}`);
+    error.textContent = message ?? '';
+    error.hidden = !message;
+  }
+  function currentDatePeers() {
+    const dates = [...panel.querySelectorAll('.measurement input[id^="date-"]')];
+    return new Map(dates.map(control => [control.id, dates.filter(other => other !== control && control.value && other.value === control.value).map(other => other.id)]));
+  }
   function showErrors(errors, announce = false) {
-    panel.querySelectorAll('input, select').forEach(control => {
-      const message = errors[control.id];
-      control.setAttribute('aria-invalid', String(Boolean(message)));
-      const error = document.getElementById(`error-${control.id}`);
-      error.textContent = message ?? '';
-      error.hidden = !message;
-    });
+    panel.querySelectorAll('input, select').forEach(control => showControlError(control, errors[control.id]));
+    datePeers = currentDatePeers();
     const formError = document.getElementById('form-error');
     formError.textContent = errors._form ?? errors.measurements ?? '';
     formError.hidden = !formError.textContent;
@@ -172,8 +179,18 @@
     // Do not shift an action button between pointerdown and click by inserting
     // or removing a blur error. That action will validate or reset the form.
     if (!attempted || actionPointer || !event.target.matches('input, select')) return;
-    const outcome = engine.calculate(active, collect());
-    showErrors(outcome.ok ? {} : outcome.errors);
+    const fieldIds = new Set([event.target.id]);
+    if (active === 'doubling' && event.target.id.startsWith('date-')) {
+      const peers = currentDatePeers();
+      // Include previous peers so fixing a duplicate also clears its old partner.
+      for (const id of [...(datePeers.get(event.target.id) ?? []), ...(peers.get(event.target.id) ?? [])]) fieldIds.add(id);
+      datePeers = peers;
+    }
+    const errors = engine.validateFields(active, collect(), [...fieldIds]);
+    for (const id of fieldIds) {
+      const control = document.getElementById(id);
+      if (control) showControlError(control, errors[id]);
+    }
   });
   panel.addEventListener('pointerdown', event => { actionPointer = Boolean(event.target.closest('button')); });
   document.addEventListener('pointerup', () => { actionPointer = false; });
