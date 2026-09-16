@@ -1,7 +1,20 @@
-# Urology Toolbox v0.1
+# Urology Toolbox
 
-A static, browser-only implementation of the five calculators in `SPEC.md`:
-PSA Density, PSA Doubling Time, Prostate Volume, IPSS with optional separate QoL, and adult CKD-EPI 2021 creatinine eGFR.
+A simple, browser-based educational and clinical utility tool with five urology calculators.
+
+**Current version:** v0.1.0
+
+**Live demo:** [Urology Toolbox](https://tayaotai0622.github.io/Urology-toolbox/)
+
+## Calculators
+
+- PSA Density
+- PSA Doubling Time
+- Prostate Volume
+- IPSS with an optional, separate QoL score
+- eGFR using the adult CKD-EPI 2021 creatinine equation
+
+All calculations run locally in your browser. User inputs are not stored. This tool supports education and clinical practice; it does not replace clinical judgment.
 
 ## Open the application
 
@@ -54,5 +67,3 @@ The suite starts and stops its own loopback static server, uses isolated browser
 ## Limits
 
 Read `VERIFICATION.md` for the exact tested environments. Firefox, Safari, physical iOS/Android devices, and screen-reader speech still need device-specific checks. The mobile tests use desktop browser viewports; they do not certify a physical mobile browser or virtual keyboard. The app has no installation/PWA or first-load offline caching. Formula applicability and clinical interpretation remain as specified in `SPEC.md`.
-
-Git is local to this project. No deployment or GitHub connection is configured.
