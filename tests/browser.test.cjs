@@ -7,10 +7,11 @@ const http = require('node:http');
 const { pathToFileURL } = require('node:url');
 const { chromium } = require('playwright');
 const { cases, uiCaseIds } = require('./cases.cjs');
+const verifyTheme = require('./theme-checks.cjs');
 const root = path.resolve(__dirname, '..');
 const output = path.join(root, 'test-results');
 fs.mkdirSync(output, { recursive: true });
-const assets = { '/': ['index.html', 'text/html'], '/index.html': ['index.html', 'text/html'], '/styles.css': ['styles.css', 'text/css'], '/calculators.js': ['calculators.js', 'text/javascript'], '/app.js': ['app.js', 'text/javascript'] };
+const assets = { '/': ['index.html', 'text/html'], '/index.html': ['index.html', 'text/html'], '/styles.css': ['styles.css', 'text/css'], '/theme.js': ['theme.js', 'text/javascript'], '/calculators.js': ['calculators.js', 'text/javascript'], '/app.js': ['app.js', 'text/javascript'] };
 const server = http.createServer((request, response) => {
   const asset = assets[request.url];
   if (!asset || request.method !== 'GET') { response.writeHead(404); response.end(); return; }
@@ -56,7 +57,7 @@ async function emptyForm(page) {
   const values = await page.locator('main input, main select:not(#unit)').evaluateAll(elements => elements.map(element => element.value));
   assert.ok(values.every(value => value === ''), 'form should be empty');
 }
-async function inspectLayout(page, width, channel) {
+async function inspectLayout(page, width, channel, colorScheme) {
   await page.setViewportSize({ width, height: 900 });
   for (const kind of ['density', 'doubling', 'volume', 'ipss', 'egfr']) {
     await prepare(page, cases.find(fixture => fixture.kind === kind && !fixture.expected.error));
@@ -76,14 +77,14 @@ async function inspectLayout(page, width, channel) {
     assert.deepEqual(layout.shortControls, []);
     assert.equal(layout.smallInputs, 0); assert.equal(layout.unlabeled, 0); assert.equal(layout.outside, 0);
     if (channel === 'chrome' && [320, 375, 1440].includes(width)) {
-      await page.screenshot({ path: path.join(output, `${channel}-${kind}-${width}.png`), fullPage: true });
+      await page.screenshot({ path: path.join(output, `${channel}-${colorScheme}-${kind}-${width}.png`), fullPage: true });
     }
   }
 }
 
-async function run(channel, base) {
+async function run(channel, base, colorScheme) {
   const browser = await chromium.launch({ channel, headless: true });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, timezoneId: 'Asia/Taipei' });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, timezoneId: 'Asia/Taipei', colorScheme });
   const page = await context.newPage();
   page.setDefaultTimeout(7000);
   await page.clock.setFixedTime(new Date('2026-09-14T04:00:00Z'));
@@ -97,9 +98,10 @@ async function run(channel, base) {
     const original = Storage.prototype.setItem;
     Storage.prototype.setItem = function (...args) { window.__storageWrites++; return original.apply(this, args); };
   });
-  const report = { channel, version: browser.version(), fixtureVariants: 0, interactionCases: [], reviewChecks: [], layouts: [], errors: [] };
+  const report = { channel, colorScheme, version: browser.version(), fixtureVariants: 0, interactionCases: [], reviewChecks: [], layouts: [], errors: [] };
   try {
     await page.goto(base);
+    assert.equal(await page.locator('html').getAttribute('data-theme'), colorScheme);
     await emptyForm(page);
     assert.equal(await page.locator('[aria-pressed="true"]').textContent(), 'PSA Density');
     const initialRequestCount = requests.length;
@@ -119,7 +121,7 @@ async function run(channel, base) {
       report.fixtureVariants++;
     }
     assert.equal(requests.length, initialRequestCount, 'calculating or editing must not request any resources');
-    console.log(`${channel}: ${report.fixtureVariants} synthetic fixture variants PASS`);
+    console.log(`${channel}/${colorScheme}: ${report.fixtureVariants} synthetic fixture variants PASS`);
 
     // PV-08: a unit change clears the measurements, without relabeling old values.
     await prepare(page, cases.find(item => item.id === 'PV-01')); await calculate(page);
@@ -249,10 +251,10 @@ async function run(channel, base) {
     await prepare(page, cases.find(item => item.id === 'PD-01')); await calculate(page);
     await page.goto('about:blank'); await page.goBack(); await emptyForm(page);
 
-    for (const width of [320, 375, 768, 1440]) { await inspectLayout(page, width, channel); report.layouts.push(width); }
+    for (const width of [320, 375, 768, 1440]) { await inspectLayout(page, width, channel, colorScheme); report.layouts.push(width); }
 
     // Approximate 200% zoom reflow using a 720 CSS-pixel viewport.
-    await inspectLayout(page, 720, channel); report.layouts.push(720);
+    await inspectLayout(page, 720, channel, colorScheme); report.layouts.push(720);
 
     const beforeOffline = requests.length;
     await context.setOffline(true);
@@ -277,20 +279,22 @@ async function run(channel, base) {
     await context.setOffline(false);
     const filePage = await context.newPage();
     await filePage.goto(pathToFileURL(path.join(root, 'index.html')).href);
+    assert.equal(await filePage.locator('html').getAttribute('data-theme'), colorScheme);
     await prepare(filePage, cases.find(item => item.id === 'PD-01')); await calculate(filePage);
     assert.deepEqual(await resultValues(filePage), ['0.150 ng/mL/cc']); report.fileProtocol = 'PASS';
     await filePage.close();
 
-    const timezone = await browser.newContext({ timezoneId: 'America/New_York' });
+    const timezone = await browser.newContext({ timezoneId: 'America/New_York', colorScheme });
     const zonePage = await timezone.newPage(); await zonePage.goto(base);
     await prepare(zonePage, cases.find(item => item.id === 'DT-07')); await calculate(zonePage);
     assert.deepEqual(await resultValues(zonePage), ['0.07 months']);
     await timezone.close(); report.timezones = ['Asia/Taipei', 'America/New_York'];
+    if (colorScheme === 'light') report.themeChecks = await verifyTheme(browser, base);
     report.status = 'PASS';
-    console.log(`${channel}: interaction, layout, privacy, offline, file:// and timezone checks PASS`);
+    console.log(`${channel}/${colorScheme}: interaction, layout, privacy, offline, file:// and timezone checks PASS`);
     return report;
   } catch (error) {
-    await page.screenshot({ path: path.join(output, `${channel}-failure.png`), fullPage: true }).catch(() => {});
+    await page.screenshot({ path: path.join(output, `${channel}-${colorScheme}-failure.png`), fullPage: true }).catch(() => {});
     throw error;
   } finally { await browser.close(); }
 }
@@ -300,8 +304,10 @@ async function run(channel, base) {
   const base = `http://127.0.0.1:${server.address().port}/`;
   const reports = [];
   try {
-    for (const channel of process.argv.slice(2).length ? process.argv.slice(2) : ['chrome', 'msedge']) reports.push(await run(channel, base));
+    for (const channel of process.argv.slice(2).length ? process.argv.slice(2) : ['chrome', 'msedge']) {
+      for (const colorScheme of ['light', 'dark']) reports.push(await run(channel, base, colorScheme));
+    }
     fs.writeFileSync(path.join(output, 'browser-report.json'), JSON.stringify({ status: 'PASS', reports }, null, 2));
-    console.log(`PASS: ${reports.length} browser(s); all 55 SPEC IDs covered; ${reports.reduce((sum, report) => sum + report.fixtureVariants, 0)} fixture executions plus interaction checks.`);
+    console.log(`PASS: ${new Set(reports.map(report => report.channel)).size} browser(s), both themes; all 55 SPEC IDs covered; ${reports.reduce((sum, report) => sum + report.fixtureVariants, 0)} fixture executions plus interaction and theme checks.`);
   } finally { await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,5 +1,7 @@
 # Urology Toolbox v0.1 — verification record
 
+The original baseline results below are historical. The latest feature-branch checks, including the theme-only storage exception, are recorded in **Dark Mode feature verification — 2026-09-16** at the end of this file.
+
 Executed: 2026-09-14, Windows. All fixtures are synthetic. `SPEC.md` was preserved without changes during initial implementation; this review-fix pass updates only its status/phase descriptions. Calculator requirements, formulas, and acceptance criteria are unchanged.
 
 ## Automated results
@@ -73,3 +75,34 @@ Additional checks cover whole-string decimal parsing, overflow, underflow, integ
 - This verification establishes the specified software behavior on the tested environments, not validation of clinical applicability beyond the formulas and limitations in SPEC.md.
 
 No deployment, remote repository, GitHub connection, backend, database, login, or external API was created.
+
+## Dark Mode feature verification — 2026-09-16
+
+Branch: `feature/dark-mode`. The new appearance behavior is separate from the unchanged v0.1 calculator requirements in `SPEC.md`. `app.js`, `calculators.js`, and the original clinical fixture data/tests are unchanged from `main`. The baseline's statements about no storage apply before this feature; this branch permits only an appearance preference.
+
+### Automated results
+
+| Check | Result |
+| --- | --- |
+| New theme script and theme-check syntax | PASS |
+| Existing calculation suite | 84 passed, 0 failed, 0 skipped |
+| Chrome 153.0.8010.48 | All 70 fixture variants and original interaction/regression checks passed in each theme |
+| Edge 153.0.4234.32 | All 70 fixture variants and original interaction/regression checks passed in each theme |
+| Total clinical browser coverage | 280 fixture executions; all 55 named SPEC cases covered in both themes and browsers |
+| Theme behavior | System light/dark defaults, live system changes before manual choice, click/keyboard switching, manual override of system settings, localStorage persistence, reload and reopening all passed |
+| Storage resilience | Invalid preference, blocked storage reads, and failed storage writes passed; switching and calculations remain available |
+
+Executed `node --test --test-reporter=spec tests/calculators.test.cjs` and `node tests/browser.test.cjs`; both returned exit code 0. `test-results/browser-report.json` contains the latest results; screenshots and reports remain ignored by Git.
+
+- With no manual theme selection, the original strict zero-storage checks still pass. When selected manually, localStorage contains only `urology-toolbox-theme` with `light` or `dark`. Theme tests check every observed storage write and confirm that inputs and results are not saved. Switching the theme makes no network request.
+- Theme switching preserves current calculator inputs, results, and displayed errors. Clear and calculator navigation do not remove the appearance preference; reload still resets calculator inputs as before.
+- Both themes pass the existing 320, 375, 768, 1440, and 720 CSS-pixel layout checks, including touch-target size, visible controls, text size, and overflow checks for all five calculators. The 720-pixel check approximates reflow and is not an actual browser-zoom test.
+- Rendered normal-text samples meet 4.5:1: the lowest sampled ratio is 5.52:1 in light mode and 6.19:1 in dark mode. Error text measures 7.05:1 and 7.87:1 respectively. Sampled input/button borders and the theme button's keyboard focus outline meet 3:1. Disabled controls are excluded from these contrast checks.
+- Offline calculations, direct `file://` opening, and both tested time zones pass in each theme. Preference persistence tests use the local HTTP origin.
+- Visually reviewed desktop dark-mode PSA Density/Doubling Time, 320-pixel light/dark PSA Density, and 375-pixel dark IPSS/eGFR screenshots. The switch remains at the top right, with readable fields, results, and footer content.
+
+### Remaining limitations
+
+Firefox, desktop Safari, physical iOS/Android browsers, native mobile pickers/keyboards, actual browser zoom, and screen-reader speech were not tested. Full cross-browser and assistive-technology acceptance testing remains incomplete. If localStorage is unavailable, switching works for the current visit but the new preference cannot be guaranteed to survive reload.
+
+This feature has not been merged into `main`, pushed, or deployed. No Git tag was changed.
